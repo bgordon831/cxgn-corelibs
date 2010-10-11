@@ -4,10 +4,11 @@ use strict;
 use warnings;
 
 use base qw | CXGN::DB::Object |;
+
+use Carp qw| croak cluck carp |;
+use POSIX;
+
 use Bio::Chado::Schema;
-use CXGN::Biosource::Schema;
-use CXGN::Metadata::Metadbdata;
-use CXGN::GEM::Template;
 
 use Math::BigFloat;
 use Chart::Clicker;
@@ -18,10 +19,14 @@ use Chart::Clicker::Renderer::Bar;
 use Chart::Clicker::Renderer::CandleStick;
 use Chart::Clicker::Decoration::Legend::Tabular;
 
+use CXGN::Biosource::Schema;
+use CXGN::Metadata::Metadbdata;
+use CXGN::GEM::Template;
 
-use Carp qw| croak cluck carp |;
+use List::Util qw/ max /;
+use List::MoreUtils qw/ pairwise /;
 
-
+use URI::Escape ();
 
 ###############
 ### PERLDOC ###
@@ -1513,6 +1518,98 @@ sub get_experiment_graph {
    return $chart;
 }
 
+
+sub get_experiment_graph_url {
+   my $self = shift;
+   my $args_href = shift;
+
+   ## Arguments handle by this function
+   ## * 'x_axis_sort', a scalar (PO or undef) (undef by default)
+   ## * 'bar_color', a hash reference with color ({ red => $int, green => $int, blue => $int, alpha => $int})(blue color by default)
+   ## * 'errorbar_color', same than bar_color (black by default)
+   ## * 'title', a scalar, the title of the graph ($experimental_design_name by default)
+   ## * 'x_axis_label', a scalar, the title for the x axis ('Experiment' by default)
+   ## * 'y_axis_label', a scalar, the title for the y axis ('Expression_Units_(Fluorescence_Intensity)')
+
+   my $x_axis_sort = $args_href->{'x_axis_sort'};
+   my $bar_color_href = $args_href->{'bar_color'}
+      || {red => 35 / 255, green => 35 / 255, blue => 142 / 255, alpha => 1};
+   my $errorbar_color_href = $args_href->{'errorbar_color'}
+      || {red => 0 / 255, green => 0 / 255, blue => 0 / 255, alpha => 1};
+   my $title = $args_href->{'title'};  ## The default value will be applied after get the data if it is undef
+   my $x_axis_label = $args_href->{'x_axis_label'}
+      || 'Experiment';
+   my $y_axis_label = $args_href->{'y_axis_label'}
+      || 'Expression_Units_(Fluorescence_Intensity)';
+
+
+   ## First, get the arrays with the data
+
+   my ( $expdesign_name,
+        $x_values_aref,
+	$x_errorvals_aref,
+	$x_tags_aref,
+	$y_values_aref,
+	$y_high_errorvals_aref,
+	$y_low_errorvals_aref,
+      ) = $self->expression_input_graph({ sort => $x_axis_sort});
+
+
+   my $error_bar_spec = do {
+       my $data_idx = 0;
+       join '|',
+         map { "E,000000,1,".($data_idx++).",1:20" }
+         @$y_values_aref
+   };
+
+   my $x_axis_label_spec = join '|', (
+       '0:',
+       map URI::Escape::uri_escape($_), @$x_tags_aref
+      );
+
+#http://chart.apis.google.com/chart?cht=bvs&chs=600x400&chm=E,000000,1,0.0,1:20|E,000000,1,0.1,1:20|E,000000,1,0.2,1:20|E,000000,1,0.3,1:20|E,000000,1,0.4,1:20|E,000000,1,0.5,1:20|E,000000,1,0.6,1:20|E,000000,1,0.7,1:20|E,000000,1,0.8,1:20|E,000000,1,0.9,1:20|E,000000,1,0.10,1:20|E,000000,1,0.11,1:20|E,000000,1,0.12,1:20|E,000000,1,0.13,1:20|E,000000,1,0.14,1:20|E,000000,1,0.15,1:20|E,000000,1,0.16,1:20|E,000000,1,0.17,1:20|E,000000,1,0.18,1:20&chp=0.10&chxr=0,-5,45&chxt=y&chd=e:UVVRU5XxWiWIVIUDWpXnXzXfXnXWXeXdXTUlXB,UKVBUtXtWOWAUdT2WhXdXsXOXQXQXLXAXJUcWv,UgVhVFX1W2WQVzUPWyXxX5XxX-XcXxX6XeUvXU
+   my $chart = join '', (
+       'http://chart.apis.google.com/chart?',
+       join '&',
+         map { join '=', @$_ }
+         $self->_pairs(
+             cht  => 'bhs',           # chart type: vertical-stacked bars
+             chs  => '500x500',       # chart size: 600px x 400px
+             chxr => '1,1,'.POSIX::ceil( 1 + max @$y_values_aref ),
+             chxt => 'y,x',
+             chm  => $error_bar_spec, # chart markers: error bars
+             chxl => $x_axis_label_spec,
+             $self->_encode_google_chart_data( [ $y_values_aref, $y_low_errorvals_aref, $y_high_errorvals_aref ] ),
+            ),
+   );
+
+   return $chart;
+}
+
+sub _pairs {
+    my $self = shift;
+    my @r;
+    push @r, [ splice( @_,0,2 ) ] while @_;
+    return @r;
+}
+
+sub _encode_google_chart_data {
+    my ( $self, $data ) = @_;
+
+    return (
+        chd => (
+             't1:'
+            .join '|',
+             map {
+                 join ',',
+                 @$_
+             } @$data
+           ),
+        chds => '0,'.POSIX::ceil( max @{$data->[0]} ),
+       );
+}
+
+
 =head2 expression_input_graph
 
   Usage: my @data = $expression->expression_input_graph()
@@ -1604,13 +1701,7 @@ sub expression_input_graph {
 	my $expdesign = $experiment->get_experimental_design();
 	$expdesign_name = $expdesign->get_experimental_design_name();
 
-	## Chart::Cliker give problems to draw names with spaces, this function
-	## replace with underlines (_)
-
-	$experiment_name =~ s/\s+/_/g;
-
 	## Put the data into the arrays
-
 	push @x_values, $x;
 	push @x_errorvals, $x + 0.5;
 	push @x_tags, $experiment_name;
