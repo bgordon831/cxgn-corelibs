@@ -46,7 +46,7 @@ sub TEST_ATTRIBUTES : Tests(19) {
                 Note=(.*?);
                 Dbxref=(.*?);
                 interpro_type=(.*?);
-                protein_count=(\d+)/x) {
+                protein_count=(\d*)/x) {
             my ($seqid, $id, $name, $alias, $parent, $note, $dbxref,$type, $protein_count) = ($1,$2,$3,$4,$5,$6,$7,$8,$9);
 
             ok($seqid, 'Seqid is not empty');
@@ -64,6 +64,7 @@ sub TEST_ATTRIBUTES : Tests(19) {
             }
 
         } else {
+            diag($line);
             ok(0, "Invalid GFF3 line!");
         }
 
