@@ -677,7 +677,6 @@ sub get_parents {
     return (@parents);
 }
 
-=======
 
 =head2 get_parents
 
