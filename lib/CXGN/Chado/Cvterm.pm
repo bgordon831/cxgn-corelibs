@@ -1515,24 +1515,30 @@ sub get_recursive_individuals {
 
 sub get_recursive_stocks {
     my $self = shift;
-    my $q = "SELECT distinct stock_id, stock.name, stock.description FROM cvtermpath
-            JOIN cvterm on (cvtermpath.object_id = cvterm.cvterm_id OR cvtermpath.subject_id = cvterm.cvterm_id )
-            JOIN stock_cvterm on (stock_cvterm.cvterm_id = cvterm.cvterm_id)
-            LEFT JOIN stock_cvtermprop USING (stock_cvterm_id)
-            LEFT JOIN cvterm as type_name ON (stock_cvtermprop.type_id = cvterm.cvterm_id)
-            JOIN stock USING (stock_id)
-            WHERE  stock_cvterm.cvterm_id = ?
-            AND stock.is_obsolete = ?
-            AND pathdistance > 0
-            AND ( (type_name.name != ? OR type_name.name IS NULL) AND (value != ? OR value IS NULL) ) ORDER BY stock.name";
+    my $q = <<'';
+SELECT DISTINCT
+         stock_id
+       , stock.name
+       , stock.description
+FROM cvtermpath
+JOIN cvterm on (cvtermpath.object_id = cvterm.cvterm_id OR cvtermpath.subject_id = cvterm.cvterm_id )
+JOIN stock_cvterm as sct on (sct.cvterm_id = cvterm.cvterm_id)
+JOIN stock USING (stock_id)
+WHERE sct.cvterm_id = ?
+      AND stock.is_obsolete = false
+      AND pathdistance > 0
+      AND 0 = ( SELECT COUNT(*)
+                FROM stock_cvtermprop p
+                WHERE type_id IN ( SELECT cvterm_id FROM cvterm WHERE name = 'obsolete' )
+                  AND p.stock_cvterm_id = sct.stock_cvterm_id
+                  AND value = '1'
+               )
 
      my $ids = $self->get_dbh->selectall_hashref
         ( $q,
           'stock_id',
           undef,
           $self->get_cvterm_id,
-          'false',
-          'obsolete' , 1
         );
     return $ids;
 
