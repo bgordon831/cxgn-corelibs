@@ -26,7 +26,6 @@ package CXGN::Phylo::Node;
 use CXGN::Phylo::Species_name_map;
 use CXGN::Phylo::Tree;
 use CXGN::Phylo::Label;
-use CXGN::Page::FormattingHelpers qw/tooltipped_text/;
 
 =head2 function new()
 
@@ -1175,23 +1174,6 @@ sub set_name {
     #	$self->get_label()->set_name($self->{name});
 }
 
-=head2 function wrap_tooltip(){
-
-  Synopsis:	$n->wrap_tooltip("At1g01010");
-  Arguments:	text/variable to wrap in tooltip, tooltip itself
-  Side effects:	NOT SURE YET. NEED TO TEST 
-                CXGN::Phylo::Node::search searches the name property.
-  Description:	//TODO//
-
-=cut
-
-sub wrap_tooltip {
-    my $self    = shift;
-    my $tooltip = shift;
-    $self->{name} = shift;
-    my $wrappedobj = tooltipped_text( $self->{name}, $tooltip );
-    return $wrappedobj;
-}
 
 =head2 accessors get_link(), set_link()
 
